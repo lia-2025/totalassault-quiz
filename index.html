@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>ブルアカ総力戦クイズ</title>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+<style>
+html, body {
+    height: 100%;
+}
+
+body {
+    font-family: "Arial", sans-serif;
+    text-align: center;
+    margin: 0;
+    padding: 0;
+    background: linear-gradient(135deg, #a0e9ff, #ffc0cb);
+    background-attachment: fixed;
+}
+
+.container {
+    background: white;
+    width: 90%;
+    max-width: 400px;
+    margin: 40px auto;
+    padding: 25px;
+    border-radius: 20px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+}
+
+h1 {
+    margin-top: 0;
+    color: #ff6f91;
+}
+
+#topBar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+}
+
+button {
+    border: none;
+    border-radius: 25px;
+    padding: 10px 18px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.play { background: #a0e9ff; }
+.pause { background: #ffd1dc; }
+.answer { background: #ff8fab; color: white; }
+.start { background: #6fe3c2; }
+.screenshot { background: #6c9cff; color: white; }
+
+button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 10px rgba(0,0,0,0.15);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+select {
+    padding: 10px;
+    border-radius: 15px;
+    border: 1px solid #ddd;
+    width: 80%;
+}
+
+#timerContainer {
+    width: 100%;
+    height: 15px;
+    background: #eee;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 15px 0;
+}
+
+#timerBar {
+    height: 100%;
+    width: 100%;
+    background: #a0e9ff;
+}
+
+#resultMessage {
+    margin-top: 15px;
+    font-size: 18px;
+    color: #333;
+}
+
+/* ★ 画像表示 */
+#resultImage {
+    display: none;
+    max-width: 100%;
+    margin-top: 10px;
+    border-radius: 10px;
+}
+
+#screenshotBtn {
+    margin-top: 15px;
+    display: none;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>ブルアカ総力戦クイズ</h1>
+
+<div id="topBar">
+    <p id="question">スタートを押してください</p>
+    <button id="startBtn" class="start" onclick="start()">スタート</button>
+</div>
+
+<p>この問題の得点: <span id="currentScore">10</span> 点</p>
+
+<div id="timerContainer">
+    <div id="timerBar"></div>
+</div>
+
+<audio id="audio"></audio>
+
+<button class="play" onclick="play()">再生</button>
+<button class="pause" onclick="pause()">一時停止</button>
+
+<br><br>
+
+<select id="answer"></select>
+<br>
+
+<button class="answer" onclick="check()">回答</button>
+
+<div id="resultMessage"></div>
+
+<!-- ★ 画像 -->
+<img id="resultImage">
+
+<button id="screenshotBtn" class="screenshot" onclick="takeScreenshot()">
+スクリーンショットを撮る
+</button>
+
+</div>
+
+<script>
+// ★ 画像付きデータ
+const musicList = [
+    {file: "music/01.ビナー.mp3", answer: "ビナー", image: "img/01.jpg"},
+    {file: "music/02.ケセド.mp3", answer: "ケセド", image: "img/02.jpg"},
+    {file: "music/03.シロクロ.mp3", answer: "シロ&クロ", image: "img/03.jpg"},
+    {file: "music/04.ヒエロ.mp3", answer: "ヒエロニムス", image: "img/04.jpg"},
+    {file: "music/05.カイテン.mp3", answer: "KAITEN FX Mk.0", image: "img/05.jpg"},
+    {file: "music/06.ペロロジラ.mp3", answer: "ペロロジラ", image: "img/06.jpg"},
+    {file: "music/07.ホド.mp3", answer: "ホド", image: "img/07.jpg"},
+    {file: "music/08.ゴズ.mp3", answer: "ゴズ", image: "img/08.jpg"},
+    {file: "music/09.グレゴリオ.mp3", answer: "グレゴリオ", image: "img/09.jpg"},
+    {file: "music/10.ホバークラフト.mp3", answer: "ホバークラフト", image: "img/10.jpg"},
+    {file: "music/11.クロカゲ.mp3", answer: "クロカゲ", image: "img/11.jpg"},
+    {file: "music/12.ゲブラ.mp3", answer: "ゲブラ", image: "img/12.jpg"},
+    {file: "music/13.イェソド.mp3", answer: "イェソド", image: "img/13.jpg"},
+];
+
+let questions = [];
+let current = 0;
+let totalScore = 0;
+
+let elapsedTime = 0;
+let lastUpdate = 0;
+let timerInterval;
+
+const audio = document.getElementById("audio");
+
+function shuffle(array) {
+    return array.sort(() => Math.random() - 0.5);
+}
+
+function setChoices() {
+    const select = document.getElementById("answer");
+    select.innerHTML = "";
+
+    musicList.forEach(m => {
+        const option = document.createElement("option");
+        option.value = m.answer;
+        option.textContent = m.answer;
+        select.appendChild(option);
+    });
+}
+
+// ★ 画像操作
+function showImage(src) {
+    const img = document.getElementById("resultImage");
+    img.src = src;
+    img.style.display = "block";
+}
+
+function hideImage() {
+    const img = document.getElementById("resultImage");
+    img.style.display = "none";
+}
+
+function start() {
+    document.getElementById("startBtn").style.display = "none";
+    document.getElementById("screenshotBtn").style.display = "none";
+
+    questions = shuffle([...musicList]).slice(0, 10);
+    current = 0;
+    totalScore = 0;
+    document.getElementById("resultMessage").innerText = "";
+    next();
+}
+
+function next() {
+    if (current >= questions.length) {
+        clearInterval(timerInterval);
+        document.getElementById("resultMessage").innerText =
+            "最終スコア: " + totalScore + "点";
+
+        document.getElementById("screenshotBtn").style.display = "inline-block";
+        return;
+    }
+
+    const q = questions[current];
+    audio.src = q.file;
+    audio.currentTime = 0;
+
+    document.getElementById("question").innerText = `第${current + 1}問`;
+    document.getElementById("resultMessage").innerText = "";
+
+    // ★ 画像リセット
+    hideImage();
+
+    setChoices();
+
+    elapsedTime = 0;
+    lastUpdate = Date.now();
+
+    startTimer();
+    audio.play();
+}
+
+function startTimer() {
+    clearInterval(timerInterval);
+
+    timerInterval = setInterval(() => {
+        if (!audio.paused) {
+            const now = Date.now();
+            elapsedTime += (now - lastUpdate) / 1000;
+            lastUpdate = now;
+        } else {
+            lastUpdate = Date.now();
+        }
+
+        const remaining = Math.max(0, 30 - elapsedTime);
+        const percent = (remaining / 30) * 100;
+        document.getElementById("timerBar").style.width = percent + "%";
+
+        const currentPoint = Math.max(1, 10 - Math.floor(elapsedTime / 3));
+        document.getElementById("currentScore").innerText = currentPoint;
+
+        if (elapsedTime >= 30) {
+            clearInterval(timerInterval);
+            audio.pause();
+
+            showMessage("不正解");
+            showImage(questions[current].image);
+
+            setTimeout(() => {
+                current++;
+                next();
+            }, 1200);
+        }
+
+    }, 100);
+}
+
+function play() { audio.play(); }
+function pause() { audio.pause(); }
+
+function showMessage(text) {
+    document.getElementById("resultMessage").innerText = text;
+}
+
+function check() {
+    const user = document.getElementById("answer").value;
+    const correct = questions[current].answer;
+
+    if (user !== correct) {
+        clearInterval(timerInterval);
+        audio.pause();
+
+        showMessage("不正解");
+        showImage(questions[current].image);
+
+        setTimeout(() => {
+            current++;
+            next();
+        }, 1200);
+        return;
+    }
+
+    const point = Math.max(1, 10 - Math.floor(elapsedTime / 3));
+    totalScore += point;
+
+    clearInterval(timerInterval);
+    audio.pause();
+
+    showMessage("正解　" + point + "点獲得！");
+    showImage(questions[current].image);
+
+    setTimeout(() => {
+        current++;
+        next();
+    }, 1200);
+}
+
+// スクショ
+function takeScreenshot() {
+    html2canvas(document.body, {
+        useCORS: true,
+        backgroundColor: null
+    }).then(canvas => {
+        const link = document.createElement("a");
+        link.download = "result.png";
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+    });
+}
+</script>
+
+</body>
+</html>
